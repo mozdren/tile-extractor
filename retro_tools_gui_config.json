@@ -1,6 +1,6 @@
 {
-  "images_dir": "C:\\TilesExtractor\\keen",
-  "db_dir": "C:\\TilesExtractor\\keen_db",
+  "images_dir": "C:\\TilesExtractor\\duke2",
+  "db_dir": "C:\\TilesExtractor\\duke2_db",
   "original_res": "320x200",
   "windowed": false,
   "window_scale": 5.0,
@@ -23,8 +23,12 @@
   "atlas_power_of_two": true,
   "annotator_scale": 24,
   "annotator_categories": "bg,fg,ui,player,enemy,collectible",
+  "dedupe_threshold": 0.03,
+  "dedupe_allow_mirror": false,
+  "dedupe_scale": 12,
   "tile_scribe_path": "C:\\TilesExtractor\\tile_scribe.py",
   "tile_editor_path": "C:\\TilesExtractor\\tile_editor.py",
   "tile_annotator_path": "C:\\TilesExtractor\\tile_annotator.py",
+  "tile_dedupe_path": "C:\\TilesExtractor\\tile_dedupe.py",
   "compose_atlas_path": "C:\\TilesExtractor\\compose_atlas.py"
 }

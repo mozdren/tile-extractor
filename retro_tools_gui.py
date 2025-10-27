@@ -6,9 +6,10 @@ Retro Tools Main Menu
 - Launch tile_scribe.py (folder navigation, fullscreen default)
 - Launch tile_editor.py (mask painting)
 - Launch tile_annotator.py (name/category/min_score)
+- Launch tile_dedupe.py (duplicate finder/remover)
 - Build atlas with compose_atlas.py (magenta background + JSON)
 
-Place this file next to: tile_scribe.py, tile_editor.py, tile_annotator.py, compose_atlas.py
+Place this file next to: tile_scribe.py, tile_editor.py, tile_annotator.py, tile_dedupe.py, compose_atlas.py
 """
 
 import os
@@ -77,10 +78,16 @@ class Config:
     annotator_scale: int = 24
     annotator_categories: str = "bg,fg,ui,player,enemy,collectible"
 
+    # Dedupe options
+    dedupe_threshold: float = 0.03
+    dedupe_allow_mirror: bool = False
+    dedupe_scale: int = 12
+
     # Paths to scripts (auto found; you can override)
     tile_scribe_path: str = "tile_scribe.py"
     tile_editor_path: str = "tile_editor.py"
     tile_annotator_path: str = "tile_annotator.py"
+    tile_dedupe_path: str = "tile_dedupe.py"
     compose_atlas_path: str = "compose_atlas.py"
 
     def normalize(self):
@@ -94,6 +101,7 @@ class Config:
         self.tile_scribe_path = find_script(self.tile_scribe_path)
         self.tile_editor_path = find_script(self.tile_editor_path)
         self.tile_annotator_path = find_script(self.tile_annotator_path)
+        self.tile_dedupe_path = find_script(self.tile_dedupe_path)
         self.compose_atlas_path = find_script(self.compose_atlas_path)
 
 def load_config() -> Config:
@@ -122,8 +130,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("900x720")
-        self.minsize(860, 660)
+        self.geometry("980x820")
+        self.minsize(920, 760)
 
         self.cfg = load_config()
         self._build_ui()
@@ -217,6 +225,20 @@ class App(tk.Tk):
         ttk.Entry(frm_ann, textvariable=self.var_annotator_categories).grid(row=0, column=3, sticky="we", padx=5)
         frm_ann.columnconfigure(3, weight=1)
 
+        # Dedupe options
+        frm_dd = ttk.LabelFrame(self, text="Tile Dedupe Options", padding=pad)
+        frm_dd.pack(fill="x", padx=pad, pady=(pad, 0))
+
+        self.var_dedupe_threshold = tk.StringVar()
+        self.var_dedupe_allow_mirror = tk.BooleanVar()
+        self.var_dedupe_scale = tk.StringVar()
+
+        ttk.Label(frm_dd, text="Threshold (0..1, lower stricter):").grid(row=0, column=0, sticky="w")
+        ttk.Entry(frm_dd, textvariable=self.var_dedupe_threshold, width=8).grid(row=0, column=1, sticky="w", padx=5)
+        ttk.Checkbutton(frm_dd, text="Allow mirror (L/R duplicates)", variable=self.var_dedupe_allow_mirror).grid(row=0, column=2, sticky="w", padx=10)
+        ttk.Label(frm_dd, text="Preview scale:").grid(row=0, column=3, sticky="e")
+        ttk.Entry(frm_dd, textvariable=self.var_dedupe_scale, width=6).grid(row=0, column=4, sticky="w", padx=5)
+
         # Atlas options
         frm_atlas = ttk.LabelFrame(self, text="Atlas Builder Options", padding=pad)
         frm_atlas.pack(fill="x", padx=pad, pady=(pad, 0))
@@ -256,12 +278,13 @@ class App(tk.Tk):
         ttk.Button(frm_actions, text="Launch Tile Scribe", command=self._run_tile_scribe).grid(row=0, column=0, padx=5, pady=5, sticky="w")
         ttk.Button(frm_actions, text="Launch Tile Editor (mask)", command=self._run_tile_editor).grid(row=0, column=1, padx=5, pady=5, sticky="w")
         ttk.Button(frm_actions, text="Launch Tile Annotator", command=self._run_tile_annotator).grid(row=0, column=2, padx=5, pady=5, sticky="w")
-        ttk.Button(frm_actions, text="Build Atlas", command=self._run_compose_atlas).grid(row=0, column=3, padx=5, pady=5, sticky="w")
-        ttk.Button(frm_actions, text="Save Settings", command=self._save_ui_to_cfg).grid(row=0, column=4, padx=5, pady=5)
-        ttk.Button(frm_actions, text="Load Settings", command=self._reload_config).grid(row=0, column=5, padx=5, pady=5)
+        ttk.Button(frm_actions, text="Launch Tile Dedupe", command=self._run_tile_dedupe).grid(row=0, column=3, padx=5, pady=5, sticky="w")
+        ttk.Button(frm_actions, text="Build Atlas", command=self._run_compose_atlas).grid(row=0, column=4, padx=5, pady=5, sticky="w")
+        ttk.Button(frm_actions, text="Save Settings", command=self._save_ui_to_cfg).grid(row=0, column=5, padx=5, pady=5)
+        ttk.Button(frm_actions, text="Load Settings", command=self._reload_config).grid(row=0, column=6, padx=5, pady=5)
 
         # Console/log
-        self.txt_log = tk.Text(self, height=10)
+        self.txt_log = tk.Text(self, height=12)
         self.txt_log.pack(fill="both", expand=True, padx=pad, pady=(0, pad))
         self._log("Ready.")
 
@@ -287,6 +310,10 @@ class App(tk.Tk):
         # annotator
         self.var_annotator_scale.set(str(cfg.annotator_scale))
         self.var_annotator_categories.set(cfg.annotator_categories)
+        # dedupe
+        self.var_dedupe_threshold.set(str(cfg.dedupe_threshold))
+        self.var_dedupe_allow_mirror.set(cfg.dedupe_allow_mirror)
+        self.var_dedupe_scale.set(str(cfg.dedupe_scale))
         # atlas
         self.var_atlas_out_image.set(cfg.atlas_out_image)
         self.var_atlas_out_json.set(cfg.atlas_out_json)
@@ -324,6 +351,12 @@ class App(tk.Tk):
         try: c.annotator_scale = int(self.var_annotator_scale.get())
         except: c.annotator_scale = 24
         c.annotator_categories = self.var_annotator_categories.get().strip()
+        # dedupe
+        try: c.dedupe_threshold = float(self.var_dedupe_threshold.get())
+        except: c.dedupe_threshold = 0.03
+        c.dedupe_allow_mirror = bool(self.var_dedupe_allow_mirror.get())
+        try: c.dedupe_scale = int(self.var_dedupe_scale.get())
+        except: c.dedupe_scale = 12
         # atlas
         c.atlas_out_image = self.var_atlas_out_image.get().strip()
         c.atlas_out_json = self.var_atlas_out_json.get().strip()
@@ -425,6 +458,22 @@ class App(tk.Tk):
         if cfg.annotator_categories:
             cmd += ["--categories", cfg.annotator_categories]
         self._spawn(cmd, "Tile Annotator")
+
+    def _run_tile_dedupe(self):
+        self._save_ui_to_cfg(also_persist=True)
+        cfg = self.cfg
+        if not cfg.db_dir:
+            messagebox.showerror("Tile Dedupe", "Please choose a DB folder.")
+            return
+        safe_mkdir(cfg.db_dir)
+
+        cmd = [sys.executable, cfg.tile_dedupe_path,
+               "--db-dir", cfg.db_dir,
+               "--threshold", str(cfg.dedupe_threshold),
+               "--scale", str(cfg.dedupe_scale)]
+        if cfg.dedupe_allow_mirror:
+            cmd.append("--allow-mirror")
+        self._spawn(cmd, "Tile Dedupe")
 
     def _run_compose_atlas(self):
         self._save_ui_to_cfg(also_persist=True)
